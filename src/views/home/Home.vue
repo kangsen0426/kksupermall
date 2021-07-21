@@ -1,35 +1,25 @@
 <template>
   <div id="home" class="wrapper">
     <nav-bar class="home-nav"><div slot="center">购物街</div></nav-bar>
-    
-      <tab-control
-        ref="tabControl1"
-        :titles="['流行', '新款', '精选']"
-        @tabClick="tabClick"
-        class="tab-control"
-        v-show="this.istabFixed"
-      />
-    <scroll
-      class="content"
-      ref="scroll"
-      :probe-type="3"
-      @scroll="contentScroll"
-      :pull-up-load="true"
-      @pullingUp = 'loadmore'
-    >
-      <home-swiper :banners="banners" @swierImageLoad='swierImageLoad'/>
-      <recommend-view :recommends="recommends" />
-      <feature-view />
-      <tab-control
-        ref="tabControl2"
-        :titles="['流行', '新款', '精选']"
-        @tabClick="tabClick"
-        
-      />
-      <good-list :goods="showGoods" />
+    <tab-control :titles="['流行', '新款', '精选']"
+                 @tabClick="tabClick"
+                 ref="tabControl1"
+                 class="tab-control" v-show="isTabFixed"/>
+    <scroll class="content"
+            ref="scroll"
+            :probe-type="3"
+            @scroll="contentScroll"
+            :pull-up-load="true"
+            @pullingUp="loadMore">
+      <home-swiper :banners="banners" @swiperImageLoad="swiperImageLoad"/>
+      <recommend-view :recommends="recommends"/>
+      <feature-view/>
+      <tab-control :titles="['流行', '新款', '精选']"
+                   @tabClick="tabClick"
+                   ref="tabControl2"/>
+      <good-list :goods="showGoods"/>
     </scroll>
-
-    <back-top @click.native="backClick" v-show="isShowBackTop" />
+    <back-top @click.native="backClick" v-show="isShowBackTop"/>
   </div>
 </template>
 
@@ -45,6 +35,7 @@
   import BackTop from 'components/content/backTop/BackTop'
 
   import { getHomeMultidata, getHomeGoods } from "network/home"
+  import {debounce} from "common/utils";
 
   export default {
     name: "Home",
@@ -69,14 +60,29 @@
         },
         currentType: 'pop',
         isShowBackTop: false,
-        tabOffsetTop:0,
-        istabFixed:false
+        tabOffsetTop: 0,
+        isTabFixed: false,
+        saveY: 0,
+        homeitemlistener:null
       }
     },
     computed: {
       showGoods() {
         return this.goods[this.currentType].list
       }
+    },
+    destroyed() {
+      console.log('home destroyed');
+    },
+    activated() {
+      this.$refs.scroll.scrollTo(0, this.saveY, 0)
+      this.$refs.scroll.refresh()
+    },
+    deactivated() {
+      //保存y值
+      this.saveY = this.$refs.scroll.getScrollY()
+      //取消全局事件监听
+      this.$bus.$off('swiperImageLoad',this.homeitemlistener)
     },
     created() {
       // 1.请求多个数据
@@ -86,24 +92,16 @@
       this.getHomeGoods('pop')
       this.getHomeGoods('new')
       this.getHomeGoods('sell')
-
-     
-
     },
-    mounted(){
-      
-      //防抖
-      const refresh = this.debounce(this.$refs.scroll.refresh,100)
+    mounted() {
+      // 1.图片加载完成的事件监听
+      const refresh = debounce(this.$refs.scroll.refresh, 50)
 
-       //监听图片加载完成
-      this.$bus.$on('imageload',()=>{
-        refresh()
-      })
+      //2.对监听的事件进行一个保存
+      this.homeitemlistener = () => {refresh()}
 
-      //获取tabcontrol的offsetTop
-      //this.$refs.tabControl
-
-},
+      this.$bus.$on('itemImageLoad',this.homeitemlistener )
+    },
     methods: {
       /**
        * 事件监听相关的方法
@@ -120,49 +118,30 @@
             this.currentType = 'sell'
             break
         }
-
-        this.$refs.tabControl1.currentIndex = index
-        this.$refs.tabControl2.currentIndex = index
+        this.$refs.tabControl1.currentIndex = index;
+        this.$refs.tabControl2.currentIndex = index;
       },
       backClick() {
         this.$refs.scroll.scrollTo(0, 0)
       },
       contentScroll(position) {
-        //判断backtop是否显示
+        // 1.判断BackTop是否显示
         this.isShowBackTop = (-position.y) > 1000
 
-        //判断是否吸顶
-        this.istabFixed = (-position.y) > this.tabOffsetTop
+        // 2.决定tabControl是否吸顶(position: fixed)
+        this.isTabFixed = (-position.y) > this.tabOffsetTop
       },
-      loadmore(){
-       this.getHomeGoods(this.currentType)
+      loadMore() {
+        this.getHomeGoods(this.currentType)
       },
-      swierImageLoad(){
-       this.tabOffsetTop = this.$refs.tabControl2.$el.offsetTop
-      }
-      ,
-
-      //防抖
-      debounce(func,delay){
-        let timer = null
-
-        return function(...args){
-          if(timer){
-            clearTimeout(timer)
-          }
-
-          timer = setTimeout(() => {
-            func.apply(this,args)
-          }, delay);
-        }
+      swiperImageLoad() {
+        this.tabOffsetTop = this.$refs.tabControl2.$el.offsetTop;
       },
-
       /**
        * 网络请求相关的方法
        */
       getHomeMultidata() {
         getHomeMultidata().then(res => {
-     
           this.banners = res.data.banner.list;
           this.recommends = res.data.recommend.list;
         })
@@ -173,7 +152,7 @@
           this.goods[type].list.push(...res.data.list)
           this.goods[type].page += 1
 
-          //完成加载更多
+          // 完成上拉加载更多
           this.$refs.scroll.finishPullUp()
         })
       }
@@ -182,43 +161,42 @@
 </script>
 
 <style scoped>
-#home {
-  /*padding-top: 44px;*/
-  height: 100vh;
-  position: relative;
-}
+  #home {
+    /*padding-top: 44px;*/
+    height: 100vh;
+    position: relative;
+  }
 
-.home-nav {
-  background-color: var(--color-tint);
-  color: #fff;
+  .home-nav {
+    background-color: var(--color-tint);
+    color: #fff;
 
-  /* position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 9; */
-}
+    /*在使用浏览器原生滚动时, 为了让导航不跟随一起滚动*/
+    /*position: fixed;*/
+    /*left: 0;*/
+    /*right: 0;*/
+    /*top: 0;*/
+    /*z-index: 9;*/
+  }
 
+  .content {
+    overflow: hidden;
 
+    position: absolute;
+    top: 44px;
+    bottom: 49px;
+    left: 0;
+    right: 0;
+  }
 
-.content {
-  overflow: hidden;
+  .tab-control {
+    position: relative;
+    z-index: 9;
+  }
 
-  position: absolute;
-  top: 44px;
-  bottom: 49px;
-  left: 0;
-  right: 0;
-}
-
-.tab-control{
-  position: relative;
-  z-index: 666;
-}
-
-/*.content {*/
-/*height: calc(100% - 93px);*/
-/*overflow: hidden;*/
-/*margin-top: 44px;*/
-/*}*/
+  /*.content {*/
+    /*height: calc(100% - 93px);*/
+    /*overflow: hidden;*/
+    /*margin-top: 44px;*/
+  /*}*/
 </style>
