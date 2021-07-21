@@ -1,15 +1,28 @@
 <template>
   <div id="detail">
-    <detail-nav-bar class="detail-nav" />
-    <scroll class="content" ref="scroll">
+    <detail-nav-bar class="detail-nav" ref="nav" @titleclick="titleclick" />
+    <scroll
+      class="content"
+      ref="scroll"
+      :probe-type="3"
+      @scroll="contentScroll"
+    >
       <detail-swiper :top-images="topImages" />
       <detail-base-info :goods="goods" />
       <detail-shop-info :shop="shop" />
       <detail-goods-info :detail-info="detailInfo" @imageLoad="imageLoad" />
-      <detail-param-info :param-info="paramInfo" />
-      <detail-comment-info :commentInfo="commentInfo"></detail-comment-info>
-      <goods-list :goods="recommends"></goods-list>
+      <detail-param-info ref="params" :param-info="paramInfo" />
+      <detail-comment-info
+        ref="comment"
+        :commentInfo="commentInfo"
+      ></detail-comment-info>
+      <goods-list ref="recommends" :goods="recommends"></goods-list>
     </scroll>
+    <detail-bottom-bar
+      @addCart="addToCart"
+      @toCart="toCart"
+    ></detail-bottom-bar>
+    <back-top @click.native="backClick" v-show="isShowBackTop" />
   </div>
 </template>
 
@@ -21,7 +34,9 @@ import DetailShopInfo from "./childComps/DetailShopInfo";
 import DetailGoodsInfo from "./childComps/DetailGoodsInfo";
 import DetailParamInfo from "./childComps/DetailParamInfo";
 import DetailCommentInfo from "./childComps/DeatilComment.vue";
+import DetailBottomBar from "./childComps/DeatilBottomBar.vue";
 import GoodsList from "components/content/goods/GoodsList";
+import BackTop from "components/content/backTop/BackTop";
 
 import Scroll from "components/common/scroll/Scroll";
 
@@ -47,7 +62,8 @@ export default {
     Scroll,
     DetailCommentInfo,
     GoodsList,
-
+    DetailBottomBar,
+    BackTop,
   },
   data() {
     return {
@@ -60,6 +76,10 @@ export default {
       commentInfo: {},
       recommends: [],
       homeitemlistener: null,
+      themeTopys: [],
+      currentIndex: 0,
+      isShowBackTop: false,
+      // getCart: {},
     };
   },
   created() {
@@ -103,8 +123,62 @@ export default {
       });
   },
   methods: {
+    backClick() {
+      this.$refs.scroll.scrollTo(0, 0);
+    },
     imageLoad() {
       this.$refs.scroll.refresh();
+
+      this.themeTopys = [];
+
+      this.themeTopys.push(0);
+      this.themeTopys.push(this.$refs.params.$el.offsetTop);
+      this.themeTopys.push(this.$refs.comment.$el.offsetTop);
+      this.themeTopys.push(this.$refs.recommends.$el.offsetTop);
+
+      // console.log(this.themeTopys)
+    },
+    titleclick(index) {
+      this.$refs.scroll.scrollTo(0, -this.themeTopys[index], 100);
+    },
+    contentScroll(position) {
+      //获取y值
+      const positionY = -position.y;
+      let length = this.themeTopys.length;
+
+      for (let i = 0; i < length; i++) {
+        if (
+          (i < length - 1 &&
+            positionY > this.themeTopys[i] &&
+            positionY < this.themeTopys[i + 1]) ||
+          (i == length - 1 && positionY > this.themeTopys[i])
+        ) {
+          if (this.currentIndex != i) {
+            this.currentIndex = i;
+
+            this.$refs.nav.currentIndex = this.currentIndex;
+          }
+        }
+      }
+
+      //是否显示回到顶部
+      this.isShowBackTop = -position.y > 1000;
+    },
+    toCart() {
+      // this.getCart();
+      // this.$router.push("/cart");
+    },
+    addToCart() {
+      const product = {}
+      product.image = this.topImages[0]
+      product.title = this.goods.title
+      product.desc = this.detailInfo.desc
+      product.price = this.goods.realPrice
+      product.iid = this.iid
+
+
+      this.$store.commit('addCart',product)
+
     },
   },
   mounted() {
@@ -118,9 +192,10 @@ export default {
 
     this.$bus.$on("imageLoad", this.homeitemlistener);
   },
-  destroyed(){
-     this.$bus.$off("imageLoad", this.homeitemlistener);
-  }
+  destroyed() {
+    this.$bus.$off("imageLoad", this.homeitemlistener);
+  },
+  updated() {},
 };
 </script>
 
@@ -139,6 +214,6 @@ export default {
 }
 
 .content {
-  height: calc(100% - 44px);
+  height: calc(100% - 95px);
 }
 </style>
